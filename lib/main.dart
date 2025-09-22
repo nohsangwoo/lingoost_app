@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'services/device_info_service.dart';
+import 'screens/video_player_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -59,6 +60,42 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(const Color(0x00000000))
         ..setUserAgent(DeviceInfoService.getUserAgent())
+        ..addJavaScriptChannel(
+          'LingoostVideoPlayer',
+          onMessageReceived: (JavaScriptMessage message) {
+            try {
+              debugPrint('[LingoostApp] Received video play request: ${message.message}');
+
+              // Parse the URL-encoded message
+              final Map<String, String> data = Uri.splitQueryString(message.message);
+              final String? videoUrl = data['url'];
+              final String? title = data['title'];
+              final String? courseTitle = data['courseTitle'];
+
+              debugPrint('[LingoostApp] Parsed data:');
+              debugPrint('  - URL: $videoUrl');
+              debugPrint('  - Title: $title');
+              debugPrint('  - Course: $courseTitle');
+
+              if (videoUrl != null && title != null && context.mounted) {
+                // Ensure URL is properly formatted
+                final String cleanUrl = videoUrl.trim();
+                debugPrint('[LingoostApp] Opening video player with URL: $cleanUrl');
+
+                VideoPlayerScreen.show(
+                  context: context,
+                  videoUrl: cleanUrl,
+                  title: title,
+                  courseTitle: courseTitle,
+                );
+              } else {
+                debugPrint('[LingoostApp] Missing required data: url=$videoUrl, title=$title');
+              }
+            } catch (e) {
+              debugPrint('[LingoostApp] Error handling video request: $e');
+            }
+          },
+        )
         ..setNavigationDelegate(
           NavigationDelegate(
             onProgress: (int progress) {},
