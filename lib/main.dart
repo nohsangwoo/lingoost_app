@@ -83,24 +83,38 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
               debugPrint('  - Dub Tracks: ${dubTracks?.length ?? 0}');
 
               if (masterUrl != null && title != null && context.mounted) {
-                // For now, use master URL directly
-                // iOS VideoPlayer should handle HLS with multiple audio tracks
                 String playUrl = masterUrl;
 
-                // If a specific language is selected and not origin, try to construct a language-specific URL
-                // This is a workaround since iOS video_player doesn't support dynamic audio track switching
+                // Try different approaches based on selected language
                 if (selectedLanguage != null && selectedLanguage != 'origin' && dubTracks != null) {
+                  // Look for the specific audio track URL
                   for (final track in dubTracks) {
                     if (track is Map<String, dynamic> && track['lang'] == selectedLanguage) {
-                      // Some HLS streams provide separate URLs for different languages
-                      // If the track has a specific URL, we might need to use it
-                      // For now, we'll stick with master URL and hope iOS handles it
+                      final String? trackUrl = track['url'] as String?;
+
+                      if (trackUrl != null && trackUrl.isNotEmpty) {
+                        // Check if this is a full video+audio URL or just audio
+                        if (trackUrl.contains('video') || trackUrl.contains('master')) {
+                          // Use track URL if it contains video
+                          playUrl = trackUrl;
+                          debugPrint('[LingoostApp] Using track-specific URL: $trackUrl');
+                        } else {
+                          // If it's audio-only, we need to stick with master and hope for the best
+                          // Add language hint to URL if possible
+                          if (masterUrl.contains('?')) {
+                            playUrl = '$masterUrl&lang=$selectedLanguage';
+                          } else {
+                            playUrl = '$masterUrl?lang=$selectedLanguage';
+                          }
+                          debugPrint('[LingoostApp] Using master with lang param: $playUrl');
+                        }
+                      }
                       break;
                     }
                   }
                 }
 
-                debugPrint('[LingoostApp] Playing with URL: $playUrl');
+                debugPrint('[LingoostApp] Final playback URL: $playUrl');
                 debugPrint('[LingoostApp] Selected language: $selectedLanguage');
 
                 VideoPlayerScreen.show(
