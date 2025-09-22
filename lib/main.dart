@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'services/device_info_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,7 +23,8 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const LingoostWebViewPage(
-        initialUrl: 'https://www.lingoost.com/ko',
+        // initialUrl: 'https://www.lingoost.com/ko',
+        initialUrl: 'https://f2aab6eac933.ngrok-free.app/ko', // 로컬 테스트용
       ),
     );
   }
@@ -56,16 +58,22 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
       final WebViewController controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(const Color(0x00000000))
+        ..setUserAgent(DeviceInfoService.getUserAgent())
         ..setNavigationDelegate(
           NavigationDelegate(
             onProgress: (int progress) {},
-            onPageStarted: (String url) {
+            onPageStarted: (String url) async {
               setState(() {
                 _hasError = false;
                 _errorDescription = null;
               });
+              // Inject device info as early as possible
+              await DeviceInfoService.injectScriptsToController(_controller!);
             },
             onPageFinished: (String url) async {
+              // Re-inject scripts after page load to ensure they're available
+              await DeviceInfoService.injectScriptsToController(_controller!);
+
               const String jsOverrideWindowOpen = """
                   (function() {
                     try {
@@ -118,7 +126,9 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
               try {
                 await _controller?.runJavaScript(jsOverrideWindowOpen);
                 await _controller?.runJavaScript(jsDisableZoom);
-              } catch (_) {}
+              } catch (e) {
+                debugPrint('JavaScript injection error: $e');
+              }
             },
             onWebResourceError: (WebResourceError error) {
               setState(() {
@@ -243,7 +253,8 @@ class _UnsupportedView extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () async {
-                const String url = 'https://www.lingoost.com/ko';
+                const String url = 'https://f2aab6eac933.ngrok-free.app/ko'; // 로컬 테스트용
+                // const String url = 'https://www.lingoost.com/ko';
                 final Uri uri = Uri.parse(url);
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               },
