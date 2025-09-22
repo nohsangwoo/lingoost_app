@@ -6,12 +6,14 @@ class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
   final String title;
   final String? courseTitle;
+  final String? selectedLanguage;
 
   const VideoPlayerScreen({
     Key? key,
     required this.videoUrl,
     required this.title,
     this.courseTitle,
+    this.selectedLanguage,
   }) : super(key: key);
 
   static Future<void> show({
@@ -19,6 +21,7 @@ class VideoPlayerScreen extends StatefulWidget {
     required String videoUrl,
     required String title,
     String? courseTitle,
+    String? selectedLanguage,
   }) {
     // Force landscape mode for video playback
     SystemChrome.setPreferredOrientations([
@@ -33,6 +36,7 @@ class VideoPlayerScreen extends StatefulWidget {
           videoUrl: videoUrl,
           title: title,
           courseTitle: courseTitle,
+          selectedLanguage: selectedLanguage,
         ),
       ),
     ).then((_) {
@@ -66,6 +70,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _initializeVideo() async {
     try {
       debugPrint('[VideoPlayer] Initializing with URL: ${widget.videoUrl}');
+      debugPrint('[VideoPlayer] Selected language: ${widget.selectedLanguage}');
 
       // Check if URL is valid
       final Uri? uri = Uri.tryParse(widget.videoUrl);

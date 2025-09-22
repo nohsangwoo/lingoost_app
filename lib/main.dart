@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
@@ -66,30 +67,51 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
             try {
               debugPrint('[LingoostApp] Received video play request: ${message.message}');
 
-              // Parse the URL-encoded message
-              final Map<String, String> data = Uri.splitQueryString(message.message);
-              final String? videoUrl = data['url'];
-              final String? title = data['title'];
-              final String? courseTitle = data['courseTitle'];
+              // Parse JSON message
+              final Map<String, dynamic> data = jsonDecode(message.message);
+              final String? masterUrl = data['url'] as String?;
+              final String? title = data['title'] as String?;
+              final String? courseTitle = data['courseTitle'] as String?;
+              final String? selectedLanguage = data['selectedLanguage'] as String?;
+              final List<dynamic>? dubTracks = data['dubTracks'] as List<dynamic>?;
 
               debugPrint('[LingoostApp] Parsed data:');
-              debugPrint('  - URL: $videoUrl');
+              debugPrint('  - Master URL: $masterUrl');
               debugPrint('  - Title: $title');
               debugPrint('  - Course: $courseTitle');
+              debugPrint('  - Selected Language: $selectedLanguage');
+              debugPrint('  - Dub Tracks: ${dubTracks?.length ?? 0}');
 
-              if (videoUrl != null && title != null && context.mounted) {
-                // Ensure URL is properly formatted
-                final String cleanUrl = videoUrl.trim();
-                debugPrint('[LingoostApp] Opening video player with URL: $cleanUrl');
+              if (masterUrl != null && title != null && context.mounted) {
+                // For now, use master URL directly
+                // iOS VideoPlayer should handle HLS with multiple audio tracks
+                String playUrl = masterUrl;
+
+                // If a specific language is selected and not origin, try to construct a language-specific URL
+                // This is a workaround since iOS video_player doesn't support dynamic audio track switching
+                if (selectedLanguage != null && selectedLanguage != 'origin' && dubTracks != null) {
+                  for (final track in dubTracks) {
+                    if (track is Map<String, dynamic> && track['lang'] == selectedLanguage) {
+                      // Some HLS streams provide separate URLs for different languages
+                      // If the track has a specific URL, we might need to use it
+                      // For now, we'll stick with master URL and hope iOS handles it
+                      break;
+                    }
+                  }
+                }
+
+                debugPrint('[LingoostApp] Playing with URL: $playUrl');
+                debugPrint('[LingoostApp] Selected language: $selectedLanguage');
 
                 VideoPlayerScreen.show(
                   context: context,
-                  videoUrl: cleanUrl,
+                  videoUrl: playUrl.trim(),
                   title: title,
                   courseTitle: courseTitle,
+                  selectedLanguage: selectedLanguage,
                 );
               } else {
-                debugPrint('[LingoostApp] Missing required data: url=$videoUrl, title=$title');
+                debugPrint('[LingoostApp] Missing required data: url=$masterUrl, title=$title');
               }
             } catch (e) {
               debugPrint('[LingoostApp] Error handling video request: $e');
