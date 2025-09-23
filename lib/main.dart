@@ -38,7 +38,7 @@ String appBaseUrl() {
   const String envOverride = String.fromEnvironment('APP_BASE_URL');
   if (envOverride.isNotEmpty) return envOverride;
   // Toggle defaults by build mode
-  const String local = 'https://09bcb4e0898b.ngrok-free.app';
+  const String local = 'https://684b1cb854d8.ngrok-free.app';
   const String prod = 'https://www.lingoost.com';
   return kReleaseMode ? prod : local;
 }
@@ -93,7 +93,6 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
       final WebViewController controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(const Color(0x00000000))
-        ..setUserAgent(DeviceInfoService.getUserAgent())
         ..addJavaScriptChannel(
           'LingoostAuth',
           onMessageReceived: (JavaScriptMessage message) async {
@@ -330,6 +329,9 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
                 _hasError = true;
                 _errorDescription = error.description;
               });
+              debugPrint(
+                '[WebViewError] code=${error.errorCode} type=${error.errorType} desc=${error.description}',
+              );
             },
             onNavigationRequest: (NavigationRequest request) async {
               final Uri uri = Uri.parse(request.url);
