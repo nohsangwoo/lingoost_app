@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform, kIsWeb;
+    show defaultTargetPlatform, TargetPlatform, kIsWeb, kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -10,6 +10,21 @@ import 'screens/video_player_screen.dart';
 
 void main() {
   runApp(const MyApp());
+}
+
+// Centralized domain/base URL management
+String appBaseUrl() {
+  const String envOverride = String.fromEnvironment('APP_BASE_URL');
+  if (envOverride.isNotEmpty) return envOverride;
+  // Toggle defaults by build mode
+  const String local = 'https://ca3c7dd25966.ngrok-free.app';
+  const String prod = 'https://www.lingoost.com';
+  return kReleaseMode ? prod : local;
+}
+
+String initialAppUrl({String locale = 'ko'}) {
+  final base = appBaseUrl().replaceAll(RegExp(r'/+$'), '');
+  return '$base/$locale';
 }
 
 class MyApp extends StatelessWidget {
@@ -24,10 +39,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const LingoostWebViewPage(
-        // initialUrl: 'https://www.lingoost.com/ko',
-        initialUrl: 'https://f2aab6eac933.ngrok-free.app/ko', // 로컬 테스트용
-      ),
+      home: const LingoostWebViewPage(initialUrl: ''),
     );
   }
 }
@@ -271,7 +283,11 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
             },
           ),
         )
-        ..loadRequest(Uri.parse(widget.initialUrl));
+        ..loadRequest(
+          Uri.parse(
+            widget.initialUrl.isNotEmpty ? widget.initialUrl : initialAppUrl(),
+          ),
+        );
 
       _controller = controller;
     }
@@ -280,12 +296,18 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
   Future<void> _reload() async {
     try {
       if (_controller == null) {
-        final Uri uri = Uri.parse(widget.initialUrl);
+        final Uri uri = Uri.parse(
+          widget.initialUrl.isNotEmpty ? widget.initialUrl : initialAppUrl(),
+        );
         await launchUrl(uri, mode: LaunchMode.externalApplication);
         return;
       }
       if (_hasError) {
-        await _controller!.loadRequest(Uri.parse(widget.initialUrl));
+        await _controller!.loadRequest(
+          Uri.parse(
+            widget.initialUrl.isNotEmpty ? widget.initialUrl : initialAppUrl(),
+          ),
+        );
       } else {
         await _controller!.reload();
       }
@@ -373,10 +395,7 @@ class _UnsupportedView extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () async {
-                const String url =
-                    'https://f2aab6eac933.ngrok-free.app/ko'; // 로컬 테스트용
-                // const String url = 'https://www.lingoost.com/ko';
-                final Uri uri = Uri.parse(url);
+                final Uri uri = Uri.parse(initialAppUrl());
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               },
               icon: const Icon(Icons.open_in_new),
