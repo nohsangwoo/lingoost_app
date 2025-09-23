@@ -73,5 +73,13 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>CLIENT_ID</key>
+	<string>763014708776-7vla6fndpmj6tpkmqus8ac8ip4icj20d.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.763014708776-7vla6fndpmj6tpkmqus8ac8ip4icj20d</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.ludgi.lingoostApp</string>
 </dict>
 </plist>
