@@ -65,15 +65,23 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
           'LingoostVideoPlayer',
           onMessageReceived: (JavaScriptMessage message) {
             try {
-              debugPrint('[LingoostApp] Received video play request: ${message.message}');
+              debugPrint(
+                '[LingoostApp] Received video play request: ${message.message}',
+              );
 
               // Parse JSON message
               final Map<String, dynamic> data = jsonDecode(message.message);
               final String? masterUrl = data['url'] as String?;
               final String? title = data['title'] as String?;
               final String? courseTitle = data['courseTitle'] as String?;
-              final String? selectedLanguage = data['selectedLanguage'] as String?;
-              final List<dynamic>? dubTracks = data['dubTracks'] as List<dynamic>?;
+              final String? selectedLanguage =
+                  data['selectedLanguage'] as String?;
+              final List<dynamic>? dubTracks =
+                  data['dubTracks'] as List<dynamic>?;
+              final String? explicitMasterUrl = data['masterUrl'] as String?;
+              final List<dynamic>? candidatesRaw =
+                  data['candidates'] as List<dynamic>?;
+              // final int? sectionId = data['sectionId'] as int?; // not used currently
 
               debugPrint('[LingoostApp] Parsed data:');
               debugPrint('  - Master URL: $masterUrl');
@@ -83,49 +91,88 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
               debugPrint('  - Dub Tracks: ${dubTracks?.length ?? 0}');
 
               if (masterUrl != null && title != null && context.mounted) {
-                String playUrl = masterUrl;
+                String primaryUrl = masterUrl;
 
-                // Try different approaches based on selected language
-                if (selectedLanguage != null && selectedLanguage != 'origin' && dubTracks != null) {
-                  // Look for the specific audio track URL
-                  for (final track in dubTracks) {
-                    if (track is Map<String, dynamic> && track['lang'] == selectedLanguage) {
-                      final String? trackUrl = track['url'] as String?;
+                // Build candidate URL list (highest priority first)
+                final List<String> candidateUrls = <String>[];
 
-                      if (trackUrl != null && trackUrl.isNotEmpty) {
-                        // Check if this is a full video+audio URL or just audio
-                        if (trackUrl.contains('video') || trackUrl.contains('master')) {
-                          // Use track URL if it contains video
-                          playUrl = trackUrl;
-                          debugPrint('[LingoostApp] Using track-specific URL: $trackUrl');
-                        } else {
-                          // If it's audio-only, we need to stick with master and hope for the best
-                          // Add language hint to URL if possible
-                          if (masterUrl.contains('?')) {
-                            playUrl = '$masterUrl&lang=$selectedLanguage';
-                          } else {
-                            playUrl = '$masterUrl?lang=$selectedLanguage';
-                          }
-                          debugPrint('[LingoostApp] Using master with lang param: $playUrl');
-                        }
-                      }
-                      break;
+                // 1) Candidates from web (patterned urls)
+                if (candidatesRaw != null) {
+                  for (final c in candidatesRaw) {
+                    if (c is String && c.trim().isNotEmpty) {
+                      candidateUrls.add(c.trim());
                     }
                   }
                 }
 
-                debugPrint('[LingoostApp] Final playback URL: $playUrl');
-                debugPrint('[LingoostApp] Selected language: $selectedLanguage');
+                // 2) DubTracks URLs for selected language (prefer only video+audio variant playlists)
+                if (selectedLanguage != null &&
+                    selectedLanguage != 'origin' &&
+                    dubTracks != null) {
+                  for (final track in dubTracks) {
+                    if (track is Map<String, dynamic> &&
+                        track['lang'] == selectedLanguage) {
+                      final String? turl = track['url'] as String?;
+                      if (turl != null && turl.isNotEmpty) {
+                        final lower = turl.toLowerCase();
+                        // Exclude obvious audio-only patterns
+                        final isAudioOnly =
+                            lower.contains('/dubtracks/') ||
+                            lower.endsWith('.aac') ||
+                            lower.endsWith('.mp3');
+                        // Prefer urls containing master/playlist/video and not audio-only
+                        if (!isAudioOnly &&
+                            (lower.contains('master') ||
+                                lower.contains('playlist') ||
+                                lower.contains('video'))) {
+                          candidateUrls.add(turl);
+                        } else {
+                          debugPrint(
+                            '[LingoostApp] Skipping audio-only dub track url: $turl',
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // 3) Master with lang query hint
+                if (selectedLanguage != null &&
+                    selectedLanguage.isNotEmpty &&
+                    selectedLanguage != 'origin') {
+                  final base = (explicitMasterUrl ?? masterUrl).trim();
+                  final withLang = base.contains('?')
+                      ? '$base&lang=$selectedLanguage'
+                      : '$base?lang=$selectedLanguage';
+                  candidateUrls.add(withLang);
+                }
+
+                // 4) Finally the provided primary (master) url
+                candidateUrls.add(masterUrl.trim());
+
+                debugPrint(
+                  '[LingoostApp] Candidate URLs (${candidateUrls.length}):',
+                );
+                for (final u in candidateUrls) {
+                  debugPrint('  - $u');
+                }
+                debugPrint(
+                  '[LingoostApp] Selected language: $selectedLanguage',
+                );
 
                 VideoPlayerScreen.show(
                   context: context,
-                  videoUrl: playUrl.trim(),
+                  videoUrl: primaryUrl.trim(),
                   title: title,
                   courseTitle: courseTitle,
                   selectedLanguage: selectedLanguage,
+                  candidateUrls: candidateUrls,
+                  masterUrl: (explicitMasterUrl ?? masterUrl).trim(),
                 );
               } else {
-                debugPrint('[LingoostApp] Missing required data: url=$masterUrl, title=$title');
+                debugPrint(
+                  '[LingoostApp] Missing required data: url=$masterUrl, title=$title',
+                );
               }
             } catch (e) {
               debugPrint('[LingoostApp] Error handling video request: $e');
@@ -326,7 +373,8 @@ class _UnsupportedView extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () async {
-                const String url = 'https://f2aab6eac933.ngrok-free.app/ko'; // 로컬 테스트용
+                const String url =
+                    'https://f2aab6eac933.ngrok-free.app/ko'; // 로컬 테스트용
                 // const String url = 'https://www.lingoost.com/ko';
                 final Uri uri = Uri.parse(url);
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
