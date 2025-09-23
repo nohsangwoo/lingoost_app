@@ -6,7 +6,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 
 class GoogleAuthService {
-  static final _supabase = Supabase.instance.client;
+  static SupabaseClient? _tryGetSupabase() {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   // Google Sign In 설정
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -51,65 +57,65 @@ class GoogleAuthService {
         return {'success': false, 'error': 'No tokens received'};
       }
 
-      // 3. Supabase로 로그인
+      // 3. Supabase로 로그인 (가능한 경우에만)
       debugPrint('Signing in to Supabase...');
 
-      AuthResponse response;
-
-      if (idToken != null) {
-        // ID Token이 있는 경우
-        response = await _supabase.auth.signInWithIdToken(
+      final supabase = _tryGetSupabase();
+      if (supabase != null && idToken != null) {
+        final AuthResponse response = await supabase.auth.signInWithIdToken(
           provider: OAuthProvider.google,
           idToken: idToken,
           accessToken: googleAccessToken,
         );
-      } else if (googleAccessToken != null) {
-        // Access Token만 있는 경우 (대체 방법)
-        debugPrint('Only access token available, trying alternative approach');
 
-        // Google 사용자 정보를 직접 전달
-        return {
-          'success': true,
-          'needsOAuthFlow': true,
-          'accessToken': googleAccessToken,
-          'user': googleUser,
-        };
-      } else {
-        return {'success': false, 'error': 'No valid tokens'};
+        debugPrint('Supabase response: ${response.session?.user.email}');
+
+        if (response.session == null) {
+          debugPrint('Failed to create Supabase session');
+          // 네이티브 세션 생성 실패 시에도 토큰을 웹으로 전달 가능하도록 fall back
+        } else {
+          // 세션 정보를 WebView에 직접 전달할 수 있도록 준비
+          final sessionJson = response.session!.toJson();
+
+          debugPrint('=== SUPABASE SESSION ANALYSIS ===');
+          debugPrint('Session.toJson: $sessionJson');
+          debugPrint(
+            'Access token exists: ${sessionJson['access_token'] != null}',
+          );
+          debugPrint(
+            'Refresh token exists: ${sessionJson['refresh_token'] != null}',
+          );
+
+          final webSessionData = {
+            'access_token': sessionJson['access_token'],
+            'refresh_token': sessionJson['refresh_token'],
+            'expires_at': sessionJson['expires_at'],
+            'expires_in': sessionJson['expires_in'],
+            'token_type': sessionJson['token_type'],
+            'user': sessionJson['user'],
+          };
+
+          return {
+            'success': true,
+            'session': response.session,
+            'user': response.user,
+            'webSessionData': webSessionData,
+          };
+        }
       }
 
-      debugPrint('Supabase response: ${response.session?.user.email}');
-
-      if (response.session == null) {
-        debugPrint('Failed to create Supabase session');
-        return {'success': false, 'error': 'Failed to create session'};
-      }
-
-      // 4. 세션 정보를 WebView에 직접 전달할 수 있도록 준비
-      final sessionJson = response.session!.toJson();
-
-      debugPrint('=== SUPABASE SESSION ANALYSIS ===');
-      debugPrint('Session.toJson: $sessionJson');
-      debugPrint('Access token exists: ${sessionJson['access_token'] != null}');
-      debugPrint(
-        'Refresh token exists: ${sessionJson['refresh_token'] != null}',
-      );
-
-      // WebView에 직접 전달할 세션 데이터 준비
-      final webSessionData = {
-        'access_token': sessionJson['access_token'],
-        'refresh_token': sessionJson['refresh_token'],
-        'expires_at': sessionJson['expires_at'],
-        'expires_in': sessionJson['expires_in'],
-        'token_type': sessionJson['token_type'],
-        'user': sessionJson['user'],
-      };
-
+      // 네이티브에서 Supabase 미초기화 또는 실패 시: 웹으로 토큰 전달하여 웹에서 로그인 수행
       return {
         'success': true,
-        'session': response.session,
-        'user': response.user,
-        'webSessionData': webSessionData, // WebView에 직접 전달할 세션 데이터
+        'webTokenData': {
+          'idToken': idToken,
+          'accessToken': googleAccessToken,
+          'user': {
+            'email': googleUser.email,
+            'displayName': googleUser.displayName,
+            'id': googleUser.id,
+          },
+        },
       };
     } catch (error) {
       debugPrint('Google Sign-In Error: $error');
@@ -170,16 +176,21 @@ class GoogleAuthService {
   /// 로그아웃
   static Future<void> signOut() async {
     await _googleSignIn.signOut();
-    await _supabase.auth.signOut();
+    final supabase = _tryGetSupabase();
+    if (supabase != null) {
+      await supabase.auth.signOut();
+    }
   }
 
   /// 현재 로그인 상태 확인
   static bool isSignedIn() {
-    return _supabase.auth.currentSession != null;
+    final supabase = _tryGetSupabase();
+    return supabase?.auth.currentSession != null;
   }
 
   /// 현재 사용자 정보
   static User? getCurrentUser() {
-    return _supabase.auth.currentUser;
+    final supabase = _tryGetSupabase();
+    return supabase?.auth.currentUser;
   }
 }

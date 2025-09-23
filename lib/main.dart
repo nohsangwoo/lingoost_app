@@ -7,8 +7,29 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'services/device_info_service.dart';
 import 'screens/video_player_screen.dart';
+import 'services/google_auth_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Prefer dart-define, but fall back to hardcoded values if not provided
+  const String supabaseUrlEnv = String.fromEnvironment('SUPABASE_URL');
+  const String supabaseAnonEnv = String.fromEnvironment('SUPABASE_ANON_KEY');
+  final String supabaseUrl = supabaseUrlEnv.isNotEmpty
+      ? supabaseUrlEnv
+      : 'https://frjimpodfgdbclrstczt.supabase.co';
+  final String supabaseAnonKey = supabaseAnonEnv.isNotEmpty
+      ? supabaseAnonEnv
+      : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZyamltcG9kZmdkYmNscnN0Y3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0NDA3NjgsImV4cCI6MjA3MzAxNjc2OH0.zVBs3slxE1k4RZZuZi8vz-HhyXEMjKoDTvLwdiw7TQ0';
+
+  try {
+    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    debugPrint('[LingoostApp] Supabase initialized');
+  } catch (e) {
+    debugPrint('[LingoostApp] Supabase init failed: $e');
+  }
+
   runApp(const MyApp());
 }
 
@@ -17,7 +38,7 @@ String appBaseUrl() {
   const String envOverride = String.fromEnvironment('APP_BASE_URL');
   if (envOverride.isNotEmpty) return envOverride;
   // Toggle defaults by build mode
-  const String local = 'https://ca3c7dd25966.ngrok-free.app';
+  const String local = 'https://09bcb4e0898b.ngrok-free.app';
   const String prod = 'https://www.lingoost.com';
   return kReleaseMode ? prod : local;
 }
@@ -73,6 +94,48 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(const Color(0x00000000))
         ..setUserAgent(DeviceInfoService.getUserAgent())
+        ..addJavaScriptChannel(
+          'LingoostAuth',
+          onMessageReceived: (JavaScriptMessage message) async {
+            try {
+              debugPrint(
+                '[LingoostApp] Auth channel message: ${message.message}',
+              );
+              Map<String, dynamic> data = {};
+              try {
+                data = jsonDecode(message.message) as Map<String, dynamic>;
+              } catch (_) {
+                // allow plain string commands like 'google'
+              }
+
+              final String action = (data['action'] ?? message.message ?? '')
+                  .toString();
+              if (action.toLowerCase().contains('google')) {
+                debugPrint(
+                  '[LingoostApp] Starting native Google Sign-In via channel',
+                );
+                final result = await GoogleAuthService.signInWithGoogle();
+                if (result['success'] == true &&
+                    result['webSessionData'] != null) {
+                  final Map<String, dynamic> sessionData =
+                      (result['webSessionData'] as Map).cast<String, dynamic>();
+                  await _injectSupabaseSessionToWeb(sessionData);
+                } else if (result['success'] == true &&
+                    result['webTokenData'] != null) {
+                  final Map<String, dynamic> tokenData =
+                      (result['webTokenData'] as Map).cast<String, dynamic>();
+                  await _injectGoogleTokensToWeb(tokenData);
+                } else {
+                  debugPrint(
+                    '[LingoostApp] Google Sign-In failed: ${result['error']}',
+                  );
+                }
+              }
+            } catch (e) {
+              debugPrint('[LingoostApp] Auth channel error: $e');
+            }
+          },
+        )
         ..addJavaScriptChannel(
           'LingoostVideoPlayer',
           onMessageReceived: (JavaScriptMessage message) {
@@ -312,6 +375,85 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
         await _controller!.reload();
       }
     } catch (_) {}
+  }
+
+  Future<void> _injectSupabaseSessionToWeb(
+    Map<String, dynamic> sessionData,
+  ) async {
+    if (_controller == null) return;
+    try {
+      final String sessionJson = jsonEncode(sessionData);
+      final String js =
+          '''
+        (async function() {
+          try {
+            console.log('[LingoostApp] Injecting Supabase session');
+            const sessionData = $sessionJson;
+
+            // Expose session to page immediately
+            window.__pendingSupabaseSession = sessionData;
+            window.dispatchEvent(new CustomEvent('pendingSupabaseSession'));
+
+            const maybeSupabase = (window.supabase || window.__supabase);
+            if (maybeSupabase && maybeSupabase.auth && maybeSupabase.auth.setSession) {
+              const { error } = await maybeSupabase.auth.setSession({
+                access_token: sessionData.access_token,
+                refresh_token: sessionData.refresh_token
+              });
+              if (error) {
+                console.error('[LingoostApp] setSession error', error);
+              } else {
+                console.log('[LingoostApp] setSession success');
+              }
+              window.location.reload();
+              return;
+            }
+            // If Supabase client not ready yet, rely on page listener to consume __pendingSupabaseSession
+          } catch (e) {
+            console.error('[LingoostApp] Failed to inject session', e);
+          }
+        })();
+      ''';
+      await _controller!.runJavaScript(js);
+    } catch (e) {
+      debugPrint('[LingoostApp] JS injection failed: $e');
+    }
+  }
+
+  Future<void> _injectGoogleTokensToWeb(Map<String, dynamic> tokenData) async {
+    if (_controller == null) return;
+    try {
+      final String tokenJson = jsonEncode(tokenData);
+      final String js =
+          '''
+        (async function() {
+          try {
+            console.log('[LingoostApp] Injecting Google tokens to web for Supabase sign-in');
+            const tokenData = $tokenJson;
+
+            if (window.handleGoogleSignInToken) {
+              window.handleGoogleSignInToken({
+                success: true,
+                accessToken: tokenData.accessToken || tokenData.googleAccessToken,
+                idToken: tokenData.idToken,
+                user: tokenData.user
+              });
+              return;
+            }
+
+            const supabase = (window.supabase || window.__supabase);
+            if (supabase && supabase.auth) {
+              console.log('[LingoostApp] Expecting page to handle token exchange');
+            }
+          } catch (e) {
+            console.error('[LingoostApp] Failed to inject tokens', e);
+          }
+        })();
+      ''';
+      await _controller!.runJavaScript(js);
+    } catch (e) {
+      debugPrint('[LingoostApp] JS token injection failed: $e');
+    }
   }
 
   @override

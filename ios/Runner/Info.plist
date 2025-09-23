@@ -73,6 +73,19 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.googleusercontent.apps.763014708776-7vla6fndpmj6tpkmqus8ac8ip4icj20d</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.763014708776-7vla6fndpmj6tpkmqus8ac8ip4icj20d</string>
+			</array>
+		</dict>
+	</array>
 	<key>CLIENT_ID</key>
 	<string>763014708776-7vla6fndpmj6tpkmqus8ac8ip4icj20d.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
