@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'services/device_info_service.dart';
 import 'screens/video_player_screen.dart';
 import 'services/google_auth_service.dart';
+import 'services/apple_auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
@@ -127,6 +128,21 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
                 } else {
                   debugPrint(
                     '[LingoostApp] Google Sign-In failed: ${result['error']}',
+                  );
+                }
+              } else if (action.toLowerCase().contains('apple')) {
+                debugPrint(
+                  '[LingoostApp] Starting native Apple Sign-In via channel',
+                );
+                final result = await AppleAuthService.signInWithApple();
+                if (result['success'] == true &&
+                    result['webSessionData'] != null) {
+                  final Map<String, dynamic> sessionData =
+                      (result['webSessionData'] as Map).cast<String, dynamic>();
+                  await _injectSupabaseSessionToWeb(sessionData);
+                } else {
+                  debugPrint(
+                    '[LingoostApp] Apple Sign-In failed: ${result['error']}',
                   );
                 }
               }
@@ -406,9 +422,10 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
                 console.error('[LingoostApp] setSession error', error);
               } else {
                 console.log('[LingoostApp] setSession success');
+                // After successful setSession, go to home
+                try { window.location.href = '/'; } catch (_) {}
+                return;
               }
-              window.location.reload();
-              return;
             }
             // If Supabase client not ready yet, rely on page listener to consume __pendingSupabaseSession
           } catch (e) {
