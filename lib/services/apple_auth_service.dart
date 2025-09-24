@@ -23,7 +23,7 @@ class AppleAuthService {
       if (!isAvailable) {
         return {
           'success': false,
-          'error': 'Apple Sign-In is not available on this device'
+          'error': 'Apple Sign-In is not available on this device',
         };
       }
 
@@ -47,9 +47,9 @@ class AppleAuthService {
         // Android는 Web OAuth 사용
         webAuthenticationOptions: Platform.isAndroid
             ? WebAuthenticationOptions(
-                clientId: 'com.ludgi.medik-service', // Service ID 사용
+                clientId: 'com.ludgi.lingoostApp.signin', // Apple Service ID
                 redirectUri: Uri.parse(
-                  'https://fnnuxaqhwvaeiyfjjatn.supabase.co/auth/v1/callback',
+                  'https://frjimpodfgdbclrstczt.supabase.co/auth/v1/callback',
                 ),
               )
             : null,
@@ -62,13 +62,14 @@ class AppleAuthService {
       debugPrint('Family name: ${credential.familyName}');
       debugPrint('Identity token exists: ${credential.identityToken != null}');
       debugPrint(
-          'Authorization code exists: ${credential.authorizationCode != null}');
+        'Authorization code exists: ${credential.authorizationCode != null}',
+      );
 
       // 3. 토큰 확인
       if (credential.identityToken == null) {
         return {
           'success': false,
-          'error': 'No identity token received from Apple'
+          'error': 'No identity token received from Apple',
         };
       }
 
@@ -96,7 +97,8 @@ class AppleAuthService {
       // 5. Supabase로 로그인
       debugPrint('Signing in to Supabase with Apple credentials...');
       debugPrint(
-          'Using nonce: ${Platform.isIOS ? "YES (rawNonce: ${rawNonce.substring(0, 10)}...)" : "NO"}');
+        'Using nonce: ${Platform.isIOS ? "YES (rawNonce: ${rawNonce.substring(0, 10)}...)" : "NO"}',
+      );
 
       AuthResponse response;
 
@@ -157,7 +159,8 @@ class AppleAuthService {
       debugPrint('Session.toJson: $sessionJson');
       debugPrint('Access token exists: ${sessionJson['access_token'] != null}');
       debugPrint(
-          'Refresh token exists: ${sessionJson['refresh_token'] != null}');
+        'Refresh token exists: ${sessionJson['refresh_token'] != null}',
+      );
 
       // WebView에 직접 전달할 세션 데이터 준비
       final webSessionData = {
@@ -166,7 +169,7 @@ class AppleAuthService {
         'expires_at': sessionJson['expires_at'],
         'expires_in': sessionJson['expires_in'],
         'token_type': sessionJson['token_type'],
-        'user': sessionJson['user']
+        'user': sessionJson['user'],
       };
 
       return {
@@ -191,10 +194,7 @@ class AppleAuthService {
         }
       }
 
-      return {
-        'success': false,
-        'error': error.toString(),
-      };
+      return {'success': false, 'error': error.toString()};
     }
   }
 
@@ -205,7 +205,7 @@ class AppleAuthService {
   }) async {
     try {
       debugPrint('Requesting handoff code from server...');
-      debugPrint('URL: https://www.medikk.com/api/mobile/handoff');
+      debugPrint('URL: https://www.lingoost.com/api/mobile/handoff');
 
       final requestBody = {
         'refreshToken': refreshToken.isNotEmpty ? refreshToken : null,
@@ -216,7 +216,7 @@ class AppleAuthService {
       debugPrint('Request body: ${jsonEncode(requestBody)}');
 
       final response = await http.post(
-        Uri.parse('https://www.medikk.com/api/mobile/handoff'),
+        Uri.parse('https://www.lingoost.com/api/mobile/handoff'),
         headers: {
           'Authorization': 'Bearer $accessToken',
           'Content-Type': 'application/json',
@@ -268,10 +268,10 @@ class AppleAuthService {
       'platform': Platform.operatingSystem,
       'isIOS': Platform.isIOS,
       'isAndroid': Platform.isAndroid,
-      'bundleId': 'com.ludgi.meddikkApp',
-      'serviceId': 'com.ludgi.medik-service',
+      'bundleId': 'com.ludgi.lingoostApp',
+      'serviceId': 'com.ludgi.lingoostApp.signin',
       'redirectUri':
-          'https://fnnuxaqhwvaeiyfjjatn.supabase.co/auth/v1/callback',
+          'https://frjimpodfgdbclrstczt.supabase.co/auth/v1/callback',
     };
   }
 
@@ -280,8 +280,10 @@ class AppleAuthService {
     const charset =
         '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
     final random = Random.secure();
-    return List.generate(length, (_) => charset[random.nextInt(charset.length)])
-        .join();
+    return List.generate(
+      length,
+      (_) => charset[random.nextInt(charset.length)],
+    ).join();
   }
 
   /// SHA256 해시 생성
