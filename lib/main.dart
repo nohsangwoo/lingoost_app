@@ -39,7 +39,8 @@ String appBaseUrl() {
   const String envOverride = String.fromEnvironment('APP_BASE_URL');
   if (envOverride.isNotEmpty) return envOverride;
   // Toggle defaults by build mode
-  const String local = 'https://684b1cb854d8.ngrok-free.app';
+  // const String local = 'https://684b1cb854d8.ngrok-free.app';
+  const String local = 'https://www.lingoost.com';
   const String prod = 'https://www.lingoost.com';
   return kReleaseMode ? prod : local;
 }
