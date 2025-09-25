@@ -9,8 +9,9 @@ class FcmService {
   FcmService._internal();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
   String? _currentToken;
   Function(String)? _onTokenRefresh;
   Function(Map<String, dynamic>)? _onMessageReceived;
@@ -28,26 +29,64 @@ class FcmService {
 
     // 권한 요청
     await _requestPermission();
-    
+
     // 로컬 알림 초기화
     await _initializeLocalNotifications();
-    
+
+    // iOS 포그라운드에서도 시스템 배너 표시 (항상 표시)
+    try {
+      await _messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    } catch (_) {}
+
+    // 자동 초기화 보장
+    try {
+      await _messaging.setAutoInitEnabled(true);
+    } catch (_) {}
+
+    // iOS: APNs 토큰 준비 대기 → FCM 토큰 획득
+    await _ensureApnsTokenReady();
     // FCM 토큰 획득
     await _getToken();
-    
+
     // 토큰 갱신 리스너
     _messaging.onTokenRefresh.listen(_handleTokenRefresh);
-    
+
     // 포그라운드 메시지 핸들러
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-    
+
     // 백그라운드 메시지 클릭 핸들러
     FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
-    
+
     // 앱이 종료된 상태에서 알림을 통해 열렸는지 확인
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
       _handleMessageOpenedApp(initialMessage);
+    }
+  }
+
+  // iOS에서 APNs 토큰이 확보될 때까지 잠시 대기
+  Future<void> _ensureApnsTokenReady() async {
+    try {
+      if (!Platform.isIOS) return;
+      String? apns = await _messaging.getAPNSToken();
+      int attempts = 0;
+      while (apns == null && attempts < 12) {
+        // 최대 6초 대기
+        await Future.delayed(const Duration(milliseconds: 500));
+        apns = await _messaging.getAPNSToken();
+        attempts++;
+      }
+      if (apns == null) {
+        print('⚠️ APNs token not available yet. FCM getToken may fail.');
+      } else {
+        print('✅ APNs token is ready.');
+      }
+    } catch (e) {
+      print('APNs token wait error: $e');
     }
   }
 
@@ -62,7 +101,7 @@ class FcmService {
       provisional: false,
       sound: true,
     );
-    
+
     print('FCM Permission status: ${settings.authorizationStatus}');
   }
 
@@ -74,9 +113,9 @@ class FcmService {
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-    
+
     const settings = InitializationSettings(android: android, iOS: ios);
-    
+
     await _localNotifications.initialize(
       settings,
       onDidReceiveNotificationResponse: (response) {
@@ -93,7 +132,7 @@ class FcmService {
     try {
       print('📲 Getting FCM token...');
       _currentToken = await _messaging.getToken();
-      
+
       if (_currentToken != null) {
         print('✅ FCM Token obtained successfully!');
         print('🔑 FCM Token: $_currentToken');
@@ -102,7 +141,7 @@ class FcmService {
       } else {
         print('❌ FCM Token is null');
       }
-      
+
       return _currentToken;
     } catch (e) {
       print('❌ Failed to get FCM token: $e');
@@ -121,16 +160,21 @@ class FcmService {
   // 포그라운드 메시지 처리
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
     print('Foreground message received: ${message.messageId}');
-    
+    print('Foreground message data: ${message.data}');
+
     // 콜백 호출
     _onMessageReceived?.call({
       'title': message.notification?.title,
       'body': message.notification?.body,
       'data': message.data,
     });
-    
-    // 로컬 알림 표시
-    await _showLocalNotification(message);
+    // iOS에서 시스템 배너가 안 뜨는 환경을 대비해 옵션으로 로컬 알림 표시
+    final showForeground =
+        message.data['showForeground'] == 'true' ||
+        message.data['foreground'] == 'true';
+    if (showForeground) {
+      await _showLocalNotification(message);
+    }
   }
 
   // 메시지 클릭 처리
@@ -153,18 +197,18 @@ class FcmService {
       priority: Priority.high,
       showWhen: true,
     );
-    
+
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
     );
-    
+
     const details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
-    
+
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       message.notification?.title ?? 'New Message',
@@ -176,25 +220,25 @@ class FcmService {
 
   // 현재 토큰 반환
   String? get currentToken => _currentToken;
-  
+
   // 토큰 강제 갱신
   Future<String?> refreshToken() async {
     await _messaging.deleteToken();
     return await _getToken();
   }
-  
+
   // 토픽 구독
   Future<void> subscribeToTopic(String topic) async {
     await _messaging.subscribeToTopic(topic);
     print('Subscribed to topic: $topic');
   }
-  
+
   // 토픽 구독 해제
   Future<void> unsubscribeFromTopic(String topic) async {
     await _messaging.unsubscribeFromTopic(topic);
     print('Unsubscribed from topic: $topic');
   }
-  
+
   // 플랫폼 정보 가져오기
   String getPlatform() {
     if (Platform.isIOS) return 'ios';

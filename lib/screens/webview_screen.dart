@@ -27,7 +27,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
           children: [
             InAppWebView(
               initialUrlRequest: URLRequest(
-                url: WebUri('https://www.lingoost.com'),
+                url: WebUri('https://71c5fc1defa4.ngrok-free.app'),
               ),
               onReceivedError: (controller, request, error) {
                 print('❌ WebView error: ${error.type} - ${error.description}');

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform, kIsWeb, kReleaseMode;
 import 'package:flutter/material.dart';
@@ -10,9 +11,29 @@ import 'screens/video_player_screen.dart';
 import 'services/google_auth_service.dart';
 import 'services/apple_auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'services/fcm_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase (iOS: default plist, Android: options)
+  try {
+    if (Firebase.apps.isEmpty) {
+      if (Platform.isIOS) {
+        await Firebase.initializeApp();
+      } else {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
+    }
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  } catch (e) {
+    debugPrint('[LingoostApp] Firebase init failed: $e');
+  }
 
   // Prefer dart-define, but fall back to hardcoded values if not provided
   const String supabaseUrlEnv = String.fromEnvironment('SUPABASE_URL');
@@ -39,9 +60,9 @@ String appBaseUrl() {
   const String envOverride = String.fromEnvironment('APP_BASE_URL');
   if (envOverride.isNotEmpty) return envOverride;
   // Toggle defaults by build mode
-  // const String local = 'https://684b1cb854d8.ngrok-free.app';
-  const String local = 'https://www.lingoost.com';
-  const String prod = 'https://www.lingoost.com';
+  const String local = 'https://0870fe04e8bc.ngrok-free.app';
+  // const String local = 'https://www.lingoost.com';
+  const String prod = 'https://0870fe04e8bc.ngrok-free.app';
   return kReleaseMode ? prod : local;
 }
 
@@ -81,6 +102,7 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
   bool _hasError = false;
   String? _errorDescription;
   late final bool _isWebViewSupported;
+  final FcmService _fcm = FcmService();
 
   @override
   void initState() {
@@ -339,6 +361,35 @@ class _LingoostWebViewPageState extends State<LingoostWebViewPage> {
                 await _controller?.runJavaScript(jsDisableZoom);
               } catch (e) {
                 debugPrint('JavaScript injection error: $e');
+              }
+
+              // Initialize FCM and deliver token to the web app
+              try {
+                await _fcm.initialize(
+                  onTokenRefresh: (token) async {
+                    final String platform = Platform.isIOS
+                        ? 'ios'
+                        : (Platform.isAndroid ? 'android' : 'unknown');
+                    final String jsFcm =
+                        """
+                    (function(){
+                      try {
+                        window.__fcmToken = "$token";
+                        window.dispatchEvent(new CustomEvent('fcmTokenReady', { detail: { token: '$token', platform: '$platform' }}));
+                        if (window.handleFlutterMessage) {
+                          window.handleFlutterMessage('FCM_TOKEN_RECEIVED', { token: '$token' });
+                          window.handleFlutterMessage('FCM_TOKEN_SAVE_REQUEST', { token: '$token', platform: '$platform', userId: null, deviceId: 'webview_device' });
+                        }
+                      } catch (e) {}
+                    })();
+                  """;
+                    await _controller?.runJavaScript(jsFcm);
+                  },
+                );
+                // Optional default subscription
+                await _fcm.subscribeToTopic('broadcast');
+              } catch (e) {
+                debugPrint('[LingoostApp] FCM initialize error: $e');
               }
             },
             onWebResourceError: (WebResourceError error) {
