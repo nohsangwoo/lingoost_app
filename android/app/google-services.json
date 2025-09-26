@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "694897469954",
+    "project_id": "lingoost-5280e",
+    "storage_bucket": "lingoost-5280e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:694897469954:android:14d7b63eda02a07a2a551b",
+        "android_client_info": {
+          "package_name": "com.ludgi.lingoost_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBN5ongZTJB_5v_kuXz7u0r5uf0fMKsPiM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

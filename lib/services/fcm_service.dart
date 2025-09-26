@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 class FcmService {
   static final FcmService _instance = FcmService._internal();
@@ -107,7 +108,7 @@ class FcmService {
 
   // 로컬 알림 초기화
   Future<void> _initializeLocalNotifications() async {
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const android = AndroidInitializationSettings('@mipmap/launcher_icon');
     const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -125,29 +126,59 @@ class FcmService {
         }
       },
     );
+
+    // Android 채널 보장 (Oreo+)
+    if (!kIsWeb && Platform.isAndroid) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'lingoost_notification_channel',
+        'Lingoost 알림',
+        description: 'Lingoost 앱의 주요 알림',
+        importance: Importance.high,
+      );
+      try {
+        final androidPlugin = _localNotifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        await androidPlugin?.createNotificationChannel(channel);
+      } catch (_) {}
+    }
   }
 
   // FCM 토큰 획득
   Future<String?> _getToken() async {
-    try {
-      print('📲 Getting FCM token...');
-      _currentToken = await _messaging.getToken();
-
-      if (_currentToken != null) {
-        print('✅ FCM Token obtained successfully!');
-        print('🔑 FCM Token: $_currentToken');
-        print('📏 Token length: ${_currentToken!.length}');
-        _onTokenRefresh?.call(_currentToken!);
-      } else {
+    int attempt = 0;
+    const int maxAttempts = 5;
+    Duration delay = const Duration(milliseconds: 400);
+    while (attempt < maxAttempts) {
+      try {
+        print('📲 Getting FCM token... (attempt ${attempt + 1}/$maxAttempts)');
+        _currentToken = await _messaging.getToken();
+        if (_currentToken != null) {
+          print('✅ FCM Token obtained successfully!');
+          print('🔑 FCM Token: $_currentToken');
+          print('📏 Token length: ${_currentToken!.length}');
+          _onTokenRefresh?.call(_currentToken!);
+          return _currentToken;
+        }
         print('❌ FCM Token is null');
+      } catch (e) {
+        final msg = e.toString();
+        print('❌ Failed to get FCM token: $msg');
+        // FIS_AUTH_ERROR일 때 재시도
+        final shouldRetry =
+            msg.contains('FIS_AUTH_ERROR') ||
+            msg.contains('FirebaseInstallations');
+        if (!shouldRetry && attempt >= 2) {
+          // 다른 오류는 몇 번만 시도하고 중단
+          break;
+        }
       }
-
-      return _currentToken;
-    } catch (e) {
-      print('❌ Failed to get FCM token: $e');
-      print('Error type: ${e.runtimeType}');
-      return null;
+      attempt++;
+      await Future.delayed(delay);
+      delay *= 2; // exponential backoff
     }
+    return null;
   }
 
   // 토큰 갱신 처리
@@ -168,11 +199,12 @@ class FcmService {
       'body': message.notification?.body,
       'data': message.data,
     });
-    // iOS에서 시스템 배너가 안 뜨는 환경을 대비해 옵션으로 로컬 알림 표시
-    final showForeground =
+    // Android: 포어그라운드에서도 항상 로컬 알림 표시
+    final bool isAndroid = !kIsWeb && Platform.isAndroid;
+    final bool showForegroundFlag =
         message.data['showForeground'] == 'true' ||
         message.data['foreground'] == 'true';
-    if (showForeground) {
+    if (isAndroid || showForegroundFlag) {
       await _showLocalNotification(message);
     }
   }
@@ -190,12 +222,13 @@ class FcmService {
   // 로컬 알림 표시
   Future<void> _showLocalNotification(RemoteMessage message) async {
     const androidDetails = AndroidNotificationDetails(
-      'medik_notification_channel',
-      'Medik 알림',
-      channelDescription: 'Medik 앱의 주요 알림',
+      'lingoost_notification_channel',
+      'Lingoost 알림',
+      channelDescription: 'Lingoost 앱의 주요 알림',
       importance: Importance.high,
       priority: Priority.high,
       showWhen: true,
+      icon: '@mipmap/launcher_icon',
     );
 
     const iosDetails = DarwinNotificationDetails(
